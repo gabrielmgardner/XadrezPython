@@ -1,0 +1,378 @@
+import pygame
+import sys
+import os
+import json
+import pickle
+from datetime import datetime
+from pygame.locals import *
+
+# ... (código anterior mantido até a classe Xadrez) ...
+
+class Xadrez:
+    def __init__(self):
+        self.tabuleiro = Tabuleiro()
+        self.jogo_ativo = True
+        self.estado = "Em andamento"
+        self.movimentos_validos = []
+        self.nome_partida = f"partida_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    # ... (outros métodos mantidos) ...
+
+    def salvar_partida(self, nome_arquivo=None):
+        """Salva o estado atual do jogo em um arquivo"""
+        if not nome_arquivo:
+            nome_arquivo = self.nome_partida
+        
+        # Garante que a pasta de saves existe
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+        
+        dados = {
+            'tabuleiro': self.tabuleiro,
+            'jogo_ativo': self.jogo_ativo,
+            'estado': self.estado,
+            'nome_partida': self.nome_partida,
+            'data_salvamento': datetime.now().isoformat()
+        }
+        
+        try:
+            with open(f'saves/{nome_arquivo}.chess', 'wb') as arquivo:
+                pickle.dump(dados, arquivo)
+            return True
+        except Exception as e:
+            print(f"Erro ao salvar partida: {e}")
+            return False
+
+    def carregar_partida(self, nome_arquivo):
+        """Carrega um jogo salvo"""
+        try:
+            with open(f'saves/{nome_arquivo}', 'rb') as arquivo:
+                dados = pickle.load(arquivo)
+                
+            self.tabuleiro = dados['tabuleiro']
+            self.jogo_ativo = dados['jogo_ativo']
+            self.estado = dados['estado']
+            self.nome_partida = dados['nome_partida']
+            return True
+        except Exception as e:
+            print(f"Erro ao carregar partida: {e}")
+            return False
+
+    def listar_partidas_salvas(self):
+        """Lista todas as partidas salvas"""
+        if not os.path.exists('saves'):
+            return []
+        
+        partidas = []
+        for arquivo in os.listdir('saves'):
+            if arquivo.endswith('.chess'):
+                # Tenta obter informações da partida
+                try:
+                    with open(f'saves/{arquivo}', 'rb') as f:
+                        dados = pickle.load(f)
+                    partidas.append({
+                        'nome': arquivo,
+                        'data': dados.get('data_salvamento', 'Desconhecida'),
+                        'turno': dados['tabuleiro'].turno,
+                        'estado': dados.get('estado', 'Desconhecido')
+                    })
+                except:
+                    partidas.append({
+                        'nome': arquivo,
+                        'data': 'Desconhecida',
+                        'turno': 'Desconhecido',
+                        'estado': 'Corrompido'
+                    })
+        
+        return partidas
+
+# Classe para o menu principal
+class Menu:
+    def __init__(self):
+        self.opcoes = [
+            "Nova Partida",
+            "Carregar Partida",
+            "Sair"
+        ]
+        self.selecionado = 0
+        self.carregando_partida = False
+        self.partidas_salvas = []
+        self.partida_selecionada = 0
+
+    def desenhar(self, tela):
+        tela.fill((50, 50, 50))
+        fonte_titulo = pygame.font.SysFont('Arial', 48)
+        fonte_opcoes = pygame.font.SysFont('Arial', 32)
+        
+        # Título
+        titulo = fonte_titulo.render("XADREZ EM PYTHON", True, BRANCO)
+        tela.blit(titulo, (LARGURA//2 - titulo.get_width()//2, 100))
+        
+        if not self.carregando_partida:
+            # Opções do menu principal
+            for i, opcao in enumerate(self.opcoes):
+                cor = AMARELO if i == self.selecionado else BRANCO
+                texto = fonte_opcoes.render(opcao, True, cor)
+                tela.blit(texto, (LARGURA//2 - texto.get_width()//2, 250 + i * 60))
+        else:
+            # Menu de carregamento de partidas
+            titulo_carregar = fonte_opcoes.render("Selecione uma partida para carregar:", True, BRANCO)
+            tela.blit(titulo_carregar, (LARGURA//2 - titulo_carregar.get_width()//2, 200))
+            
+            # Lista de partidas salvas
+            for i, partida in enumerate(self.partidas_salvas):
+                cor = AMARELO if i == self.partida_selecionada else BRANCO
+                try:
+                    data_obj = datetime.fromisoformat(partida['data'])
+                    data_formatada = data_obj.strftime('%d/%m/%Y %H:%M')
+                    texto_partida = f"{data_formatada} - Turno: {partida['turno']} - {partida['estado']}"
+                except:
+                    texto_partida = partida['nome']
+                
+                texto = fonte_opcoes.render(texto_partida, True, cor)
+                tela.blit(texto, (LARGURA//2 - texto.get_width()//2, 250 + i * 40))
+            
+            # Opção voltar
+            texto_voltar = fonte_opcoes.render("Voltar (ESC)", True, BRANCO)
+            tela.blit(texto_voltar, (LARGURA//2 - texto_voltar.get_width()//2, 250 + len(self.partidas_salvas) * 40 + 30))
+
+    def atualizar_partidas_salvas(self, xadrez):
+        self.partidas_salvas = xadrez.listar_partidas_salvas()
+
+# Função para mostrar menu de promoção
+def mostrar_menu_promocao(tela, x, y):
+    pygame.draw.rect(tela, BRANCO, (x, y, 200, 200))
+    pygame.draw.rect(tela, PRETO, (x, y, 200, 200), 2)
+    
+    fonte = pygame.font.SysFont('Arial', 20)
+    texto = fonte.render("Escolha uma peça:", True, PRETO)
+    tela.blit(texto, (x + 10, y + 10))
+    
+    opcoes = [
+        ("Q - Rainha", "rainha"),
+        ("R - Torre", "torre"),
+        ("B - Bispo", "bispo"),
+        ("N - Cavalo", "cavalo")
+    ]
+    
+    for i, (texto_opcao, _) in enumerate(opcoes):
+        texto = fonte.render(texto_opcao, True, PRETO)
+        tela.blit(texto, (x + 20, y + 50 + i * 30))
+    
+    pygame.display.update()
+    return opcoes
+
+# Função para mostrar menu de pausa durante o jogo
+def mostrar_menu_pausa(tela, xadrez):
+    menu_ativo = True
+    opcoes = ["Continuar", "Salvar Partida", "Salvar e Sair", "Sair sem Salvar"]
+    selecionado = 0
+    
+    while menu_ativo:
+        for evento in pygame.event.get():
+            if evento.type == QUIT:
+                return "sair"
+            elif evento.type == KEYDOWN:
+                if evento.key == K_UP:
+                    selecionado = (selecionado - 1) % len(opcoes)
+                elif evento.key == K_DOWN:
+                    selecionado = (selecionado + 1) % len(opcoes)
+                elif evento.key == K_RETURN:
+                    if selecionado == 0:  # Continuar
+                        return "continuar"
+                    elif selecionado == 1:  # Salvar Partida
+                        if xadrez.salvar_partida():
+                            print("Partida salva com sucesso!")
+                        else:
+                            print("Erro ao salvar partida!")
+                    elif selecionado == 2:  # Salvar e Sair
+                        xadrez.salvar_partida()
+                        return "sair"
+                    elif selecionado == 3:  # Sair sem Salvar
+                        return "sair"
+                elif evento.key == K_ESCAPE:
+                    return "continuar"
+        
+        # Desenha o menu de pausa
+        superficie = pygame.Surface((300, 250), pygame.SRCALPHA)
+        superficie.fill((0, 0, 0, 200))
+        
+        fonte_titulo = pygame.font.SysFont('Arial', 24)
+        fonte_opcoes = pygame.font.SysFont('Arial', 20)
+        
+        texto_titulo = fonte_titulo.render("MENU DE PAUSA", True, BRANCO)
+        superficie.blit(texto_titulo, (150 - texto_titulo.get_width()//2, 20))
+        
+        for i, opcao in enumerate(opcoes):
+            cor = AMARELO if i == selecionado else BRANCO
+            texto = fonte_opcoes.render(opcao, True, cor)
+            superficie.blit(texto, (150 - texto.get_width()//2, 70 + i * 40))
+        
+        tela.blit(superficie, (LARGURA//2 - 150, ALTURA//2 - 125))
+        pygame.display.flip()
+    
+    return "continuar"
+
+# Função principal
+def main():
+    pygame.init()
+    tela = pygame.display.set_mode((LARGURA, ALTURA))
+    pygame.display.set_caption('Xadrez em Python')
+    
+    xadrez = Xadrez()
+    menu = Menu()
+    imagens = carregar_imagens()
+    clock = pygame.time.Clock()
+    
+    # Estados do jogo
+    ESTADO_MENU = 0
+    ESTADO_JOGO = 1
+    estado_atual = ESTADO_MENU
+    
+    # Variáveis de controle do jogo
+    executando = True
+    origem_selecionada = None
+    movimentos_validos = []
+    
+    while executando:
+        for evento in pygame.event.get():
+            if evento.type == QUIT:
+                executando = False
+            
+            elif estado_atual == ESTADO_MENU:
+                if evento.type == KEYDOWN:
+                    if menu.carregando_partida:
+                        if evento.key == K_UP:
+                            menu.partida_selecionada = (menu.partida_selecionada - 1) % len(menu.partidas_salvas)
+                        elif evento.key == K_DOWN:
+                            menu.partida_selecionada = (menu.partida_selecionada + 1) % len(menu.partidas_salvas)
+                        elif evento.key == K_RETURN:
+                            if menu.partidas_salvas:
+                                partida = menu.partidas_salvas[menu.partida_selecionada]['nome']
+                                if xadrez.carregar_partida(partida):
+                                    estado_atual = ESTADO_JOGO
+                                else:
+                                    print("Erro ao carregar partida!")
+                        elif evento.key == K_ESCAPE:
+                            menu.carregando_partida = False
+                    else:
+                        if evento.key == K_UP:
+                            menu.selecionado = (menu.selecionado - 1) % len(menu.opcoes)
+                        elif evento.key == K_DOWN:
+                            menu.selecionado = (menu.selecionado + 1) % len(menu.opcoes)
+                        elif evento.key == K_RETURN:
+                            if menu.selecionado == 0:  # Nova Partida
+                                xadrez = Xadrez()
+                                estado_atual = ESTADO_JOGO
+                            elif menu.selecionado == 1:  # Carregar Partida
+                                menu.carregando_partida = True
+                                menu.atualizar_partidas_salvas(xadrez)
+                            elif menu.selecionado == 2:  # Sair
+                                executando = False
+            
+            elif estado_atual == ESTADO_JOGO:
+                if evento.type == KEYDOWN:
+                    if evento.key == K_ESCAPE:  # Menu de pausa
+                        acao = mostrar_menu_pausa(tela, xadrez)
+                        if acao == "sair":
+                            estado_atual = ESTADO_MENU
+                    elif evento.key == K_s:  # Tecla S para salvar rapidamente
+                        if pygame.key.get_mods() & KMOD_CTRL:  # Ctrl+S
+                            if xadrez.salvar_partida():
+                                print("Partida salva com sucesso!")
+                
+                elif evento.type == MOUSEBUTTONDOWN and evento.button == 1:
+                    # Verifica se há promoção pendente
+                    if xadrez.tabuleiro.peca_promocao:
+                        x, y = evento.pos
+                        linha, coluna = xadrez.tabuleiro.peca_promocao
+                        pos_tela = xadrez.tabuleiro.posicao_para_coordenadas(linha, coluna)
+                        
+                        # Mostra menu de promoção
+                        opcoes = mostrar_menu_promocao(tela, pos_tela[0], pos_tela[1] - 100)
+                        
+                        # Verifica a escolha do usuário
+                        for i, (_, peca) in enumerate(opcoes):
+                            if pos_tela[0] <= x <= pos_tela[0] + 200 and pos_tela[1] - 100 + 50 + i * 30 <= y <= pos_tela[1] - 100 + 50 + i * 30 + 20:
+                                xadrez.promover_peao(peca)
+                                break
+                    
+                    else:
+                        # Processa movimento normal
+                        pos = xadrez.tabuleiro.coordenadas_para_posicao(*evento.pos)
+                        if pos:
+                            linha, coluna = pos
+                            
+                            if origem_selecionada:
+                                # Tentativa de movimento
+                                if (linha, coluna) in movimentos_validos:
+                                    xadrez.executar_movimento(origem_selecionada, (linha, coluna))
+                                    origem_selecionada = None
+                                    movimentos_validos = []
+                                else:
+                                    # Seleciona nova peça
+                                    peca = xadrez.tabuleiro.tabuleiro[linha][coluna]
+                                    if peca and peca.cor == xadrez.tabuleiro.turno:
+                                        origem_selecionada = (linha, coluna)
+                                        xadrez.tabuleiro.origem_selecionada = origem_selecionada
+                                        # Calcula movimentos válidos
+                                        movimentos_validos = []
+                                        for i in range(8):
+                                            for j in range(8):
+                                                if xadrez.movimento_valido(origem_selecionada, (i, j)):
+                                                    movimentos_validos.append((i, j))
+                                    else:
+                                        origem_selecionada = None
+                                        movimentos_validos = []
+                            else:
+                                # Seleciona peça
+                                peca = xadrez.tabuleiro.tabuleiro[linha][coluna]
+                                if peca and peca.cor == xadrez.tabuleiro.turno:
+                                    origem_selecionada = (linha, coluna)
+                                    xadrez.tabuleiro.origem_selecionada = origem_selecionada
+                                    # Calcula movimentos válidos
+                                    movimentos_validos = []
+                                    for i in range(8):
+                                        for j in range(8):
+                                            if xadrez.movimento_valido(origem_selecionada, (i, j)):
+                                                movimentos_validos.append((i, j))
+        
+        # Renderização
+        if estado_atual == ESTADO_MENU:
+            menu.desenhar(tela)
+        elif estado_atual == ESTADO_JOGO:
+            # Limpa a tela
+            tela.fill(CINZA)
+            
+            # Desenha o tabuleiro e as peças
+            xadrez.tabuleiro.desenhar(tela, imagens)
+            
+            # Destaca movimentos válidos
+            for linha, coluna in movimentos_validos:
+                x, y = xadrez.tabuleiro.posicao_para_coordenadas(linha, coluna)
+                pygame.draw.rect(tela, VERDE, (x, y, TAMANHO_CASA, TAMANHO_CASA), 3)
+            
+            # Mostra informações do jogo
+            fonte = pygame.font.SysFont('Arial', 24)
+            texto_turno = fonte.render(f"Turno: {xadrez.tabuleiro.turno.capitalize()}", True, PRETO)
+            texto_estado = fonte.render(f"Estado: {xadrez.estado}", True, PRETO)
+            texto_instrucoes = fonte.render("ESC: Menu | Ctrl+S: Salvar", True, PRETO)
+            
+            tela.blit(texto_turno, (LARGURA - 200, 20))
+            tela.blit(texto_estado, (LARGURA - 200, 50))
+            tela.blit(texto_instrucoes, (LARGURA - 250, 80))
+            
+            # Verifica se o jogo terminou
+            if not xadrez.jogo_ativo:
+                texto_fim = fonte.render("Jogo terminado! Pressione ESC para voltar ao menu", True, VERMELHO)
+                tela.blit(texto_fim, (LARGURA // 2 - 250, ALTURA // 2))
+        
+        # Atualiza a tela
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
