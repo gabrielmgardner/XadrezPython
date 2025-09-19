@@ -777,3 +777,149 @@ def main():
 if __name__ == "__main__":
     main()
             self.tabuleiro.t
+    def promover_peao(self, nova_peca):
+        """Promove um peão a uma nova peça"""
+        if self.tabuleiro.peca_promocao:
+            linha, coluna = self.tabuleiro.peca_promocao
+            self.tabuleiro.promover_peao(linha, coluna, nova_peca)
+            # Muda o turno após a promoção
+            self.tabuleiro.turno = 'preto' if self.tabuleiro.turno == 'branco' else 'branco'
+
+# Função para mostrar menu de promoção
+def mostrar_menu_promocao(tela, x, y):
+    pygame.draw.rect(tela, BRANCO, (x, y, 200, 200))
+    pygame.draw.rect(tela, PRETO, (x, y, 200, 200), 2)
+    
+    fonte = pygame.font.SysFont('Arial', 20)
+    texto = fonte.render("Escolha uma peça:", True, PRETO)
+    tela.blit(texto, (x + 10, y + 10))
+    
+    opcoes = [
+        ("Q - Rainha", "rainha"),
+        ("R - Torre", "torre"),
+        ("B - Bispo", "bispo"),
+        ("N - Cavalo", "cavalo")
+    ]
+    
+    for i, (texto_opcao, _) in enumerate(opcoes):
+        texto = fonte.render(texto_opcao, True, PRETO)
+        tela.blit(texto, (x + 20, y + 50 + i * 30))
+    
+    pygame.display.update()
+    return opcoes
+
+# Função principal
+def main():
+    xadrez = Xadrez()
+    imagens = carregar_imagens()
+    clock = pygame.time.Clock()
+    
+    # Fonte para texto
+    fonte = pygame.font.SysFont('Arial', 24)
+    
+    # Variáveis de controle
+    executando = True
+    origem_selecionada = None
+    movimentos_validos = []
+    
+    while executando:
+        for evento in pygame.event.get():
+            if evento.type == QUIT:
+                executando = False
+            
+            elif evento.type == MOUSEBUTTONDOWN and evento.button == 1:
+                # Verifica se há promoção pendente
+                if xadrez.tabuleiro.peca_promocao:
+                    x, y = evento.pos
+                    linha, coluna = xadrez.tabuleiro.peca_promocao
+                    pos_tela = xadrez.tabuleiro.posicao_para_coordenadas(linha, coluna)
+                    
+                    # Mostra menu de promoção
+                    opcoes = mostrar_menu_promocao(tela, pos_tela[0], pos_tela[1] - 100)
+                    
+                    # Verifica a escolha do usuário
+                    for i, (_, peca) in enumerate(opcoes):
+                        if pos_tela[0] <= x <= pos_tela[0] + 200 and pos_tela[1] - 100 + 50 + i * 30 <= y <= pos_tela[1] - 100 + 50 + i * 30 + 20:
+                            xadrez.promover_peao(peca)
+                            break
+                
+                else:
+                    # Processa movimento normal
+                    pos = xadrez.tabuleiro.coordenadas_para_posicao(*evento.pos)
+                    if pos:
+                        linha, coluna = pos
+                        
+                        if origem_selecionada:
+                            # Tentativa de movimento
+                            if (linha, coluna) in movimentos_validos:
+                                xadrez.executar_movimento(origem_selecionada, (linha, coluna))
+                                origem_selecionada = None
+                                movimentos_validos = []
+                            else:
+                                # Seleciona nova peça
+                                peca = xadrez.tabuleiro.tabuleiro[linha][coluna]
+                                if peca and peca.cor == xadrez.tabuleiro.turno:
+                                    origem_selecionada = (linha, coluna)
+                                    xadrez.tabuleiro.origem_selecionada = origem_selecionada
+                                    # Calcula movimentos válidos
+                                    movimentos_validos = []
+                                    for i in range(8):
+                                        for j in range(8):
+                                            if xadrez.movimento_valido(origem_selecionada, (i, j)):
+                                                movimentos_validos.append((i, j))
+                                else:
+                                    origem_selecionada = None
+                                    movimentos_validos = []
+                        else:
+                            # Seleciona peça
+                            peca = xadrez.tabuleiro.tabuleiro[linha][coluna]
+                            if peca and peca.cor == xadrez.tabuleiro.turno:
+                                origem_selecionada = (linha, coluna)
+                                xadrez.tabuleiro.origem_selecionada = origem_selecionada
+                                # Calcula movimentos válidos
+                                movimentos_validos = []
+                                for i in range(8):
+                                    for j in range(8):
+                                        if xadrez.movimento_valido(origem_selecionada, (i, j)):
+                                            movimentos_validos.append((i, j))
+            
+            elif evento.type == KEYDOWN:
+                if evento.key == K_r:  # Tecla R para reiniciar
+                    xadrez = Xadrez()
+                    origem_selecionada = None
+                    movimentos_validos = []
+        
+        # Limpa a tela
+        tela.fill(CINZA)
+        
+        # Desenha o tabuleiro e as peças
+        xadrez.tabuleiro.desenhar(tela, imagens)
+        
+        # Destaca movimentos válidos
+        for linha, coluna in movimentos_validos:
+            x, y = xadrez.tabuleiro.posicao_para_coordenadas(linha, coluna)
+            pygame.draw.rect(tela, VERDE, (x, y, TAMANHO_CASA, TAMANHO_CASA), 3)
+        
+        # Mostra informações do jogo
+        texto_turno = fonte.render(f"Turno: {xadrez.tabuleiro.turno.capitalize()}", True, PRETO)
+        texto_estado = fonte.render(f"Estado: {xadrez.estado}", True, PRETO)
+        texto_instrucoes = fonte.render("Pressione R para reiniciar", True, PRETO)
+        
+        tela.blit(texto_turno, (LARGURA - 200, 20))
+        tela.blit(texto_estado, (LARGURA - 200, 50))
+        tela.blit(texto_instrucoes, (LARGURA - 250, 80))
+        
+        # Verifica se o jogo terminou
+        if not xadrez.jogo_ativo:
+            texto_fim = fonte.render("Jogo terminado! Pressione R para reiniciar", True, VERMELHO)
+            tela.blit(texto_fim, (LARGURA // 2 - 200, ALTURA // 2))
+        
+        # Atualiza a tela
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
